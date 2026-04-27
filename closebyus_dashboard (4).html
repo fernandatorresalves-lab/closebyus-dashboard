@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>closebyus — dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#faf9f7;color:#1a1a1a;padding:16px;max-width:540px;margin:0 auto;}
+.header{display:flex;align-items:center;justify-content:space-between;margin-bottom:.2rem;}
+h1{font-size:18px;font-weight:700;}
+.subtitle{font-size:12px;color:#aaa;margin-bottom:.8rem;}
+.section-label{font-size:11px;font-weight:700;color:#aaa;text-transform:uppercase;letter-spacing:.08em;margin:1.4rem 0 .6rem;}
+.metrics{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:.5rem;}
+.metric{border-radius:10px;padding:12px 14px;}
+.metric-label{font-size:11px;margin-bottom:4px;opacity:.7;}
+.metric-value{font-size:20px;font-weight:700;}
+.metric-sub{font-size:11px;margin-top:2px;opacity:.55;}
+.card{background:#fff;border:1px solid #eee;border-radius:12px;padding:14px;margin-bottom:12px;}
+.bar-row{display:flex;align-items:center;gap:8px;margin-bottom:7px;}
+.bar-label{font-size:12px;width:130px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.bar-track{flex:1;height:7px;background:#f0ede8;border-radius:4px;overflow:hidden;}
+.bar-fill{height:100%;border-radius:4px;}
+.bar-val{font-size:11px;color:#888;min-width:50px;text-align:right;}
+.pedido-row{display:flex;justify-content:space-between;align-items:flex-start;padding:8px 0;border-bottom:1px solid #f5f5f5;gap:8px;}
+.pedido-row:last-child{border-bottom:none;}
+.pedido-left{flex:1;min-width:0;}
+.pedido-nombre{font-weight:600;font-size:12px;color:#1a1a1a;}
+.pedido-prod{color:#aaa;font-size:11px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.pedido-right{text-align:right;flex-shrink:0;}
+.pedido-val{font-weight:700;color:#ff9166;font-size:12px;}
+.pedido-fecha{font-size:10px;color:#aaa;margin-top:2px;}
+.badge{font-size:10px;padding:2px 7px;border-radius:8px;font-weight:600;}
+.camp-card{border:1px solid #eee;border-radius:12px;padding:12px;margin-bottom:10px;background:#fff;}
+.camp-badge{font-size:10px;padding:3px 8px;border-radius:10px;font-weight:600;display:inline-block;margin-bottom:6px;}
+.camp-title{font-size:13px;font-weight:700;margin-bottom:4px;}
+.camp-desc{font-size:12px;color:#666;line-height:1.5;}
+.ytab{font-size:12px;padding:5px 14px;border-radius:20px;border:1px solid #ddd;background:#fff;cursor:pointer;margin-right:6px;margin-bottom:10px;}
+.ytab.active{background:#ff9166;color:#7a3a1f;border-color:#ff9166;font-weight:700;}
+.fuente-tab{font-size:11px;padding:4px 10px;border-radius:16px;border:1px solid #ddd;background:#fff;cursor:pointer;margin-right:5px;}
+.fuente-tab.active{background:#f1c96a;color:#633806;border-color:#f1c96a;font-weight:700;}
+.refresh-btn{font-size:12px;padding:6px 14px;border-radius:20px;border:1px solid #ddd;background:#fff;cursor:pointer;}
+.loading{text-align:center;padding:2rem;color:#aaa;font-size:13px;}
+.error{color:#c0392b;font-size:13px;padding:1rem;background:#fdf0f0;border-radius:10px;line-height:1.7;}
+.legend-row{display:flex;gap:14px;font-size:11px;color:#888;margin-bottom:8px;flex-wrap:wrap;}
+.leg-dot{width:10px;height:10px;border-radius:2px;display:inline-block;margin-right:4px;vertical-align:middle;}
+.source-pill{font-size:10px;padding:1px 6px;border-radius:6px;margin-left:4px;font-weight:600;}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>closebyus</h1>
+  <button class="refresh-btn" onclick="loadData()">actualizar</button>
+</div>
+<div class="subtitle" id="last-update">cargando...</div>
+<div id="year-tabs"></div>
+<div id="content"><div class="loading">Cargando datos...</div></div>
+
+<script>
+const BRASIL_URL  = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRxOBPt1MsFbOU4mdeeETtqICoRQhyzRav2C7kchtzO4BAJenGUUwyRWUjlarhX_r4cXr-aHpxl06lB/pub?gid=1507520271&single=true&output=csv';
+const STOCKH_URL  = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRxOBPt1MsFbOU4mdeeETtqICoRQhyzRav2C7kchtzO4BAJenGUUwyRWUjlarhX_r4cXr-aHpxl06lB/pub?gid=1872410876&single=true&output=csv';
+const INVENT_URL  = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQm7e3j3Kd7VwaxIFeuATBNVltiYOtQnkGMBH1GPQlDCRXsfrQAq_BkeebakZZfp0pTNg2K10w6NaaU/pub?gid=446244464&single=true&output=csv';
+const PEDIDOS_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQm7e3j3Kd7VwaxIFeuATBNVltiYOtQnkGMBH1GPQlDCRXsfrQAq_BkeebakZZfp0pTNg2K10w6NaaU/pub?gid=0&single=true&output=csv';
+
+const MONTHS = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+const COLORS = ['#ff9166','#ffa85a','#ffd592','#f1c96a','#e89d9f','#ffaec1','#ecdedb'];
+let activeYear = 'todos', activeSource = 'todos';
+let allBrasil = [], allStockH = [], allInvent = [], allPedidos = [];
+let charts = {};
+
+function parseCSV(text) {
+  const lines = text.trim().split('\n');
+  const headers = lines[0].split(',').map(h => h.replace(/^"|"$/g,'').trim());
+  return lines.slice(1).map(line => {
+    const cols = []; let cur = ''; let inQ = false;
+    for (let c of line) { if (c==='"'){inQ=!inQ;} else if (c===','&&!inQ){cols.push(cur);cur='';} else {cur+=c;} }
+    cols.push(cur);
+    const obj = {};
+    headers.forEach((h,i) => obj[h] = (cols[i]||'').replace(/^"|"$/g,'').trim());
+    return obj;
+  });
+}
+
+function parsePrecio(v) { return parseInt((v||'').replace(/[^0-9]/g,'')) || 0; }
+function fmt(n) { return '$' + Math.round(n).toLocaleString('es-CL'); }
+function fmtM(n) { return n >= 1000000 ? '$'+(n/1000000).toFixed(1)+'M' : '$'+Math.round(n/1000)+'K'; }
+function destroyChart(id) { if (charts[id]) { charts[id].destroy(); delete charts[id]; } }
+
+async function loadData() {
+  document.getElementById('content').innerHTML = '<div class="loading">Cargando datos desde 4 fuentes...</div>';
+  try {
+    const [b, sh, inv, ped] = await Promise.all([
+      fetch(BRASIL_URL).then(r => r.text()),
+      fetch(STOCKH_URL).then(r => r.text()),
+      fetch(INVENT_URL).then(r => r.text()),
+      fetch(PEDIDOS_URL).then(r => r.text()),
+    ]);
+    allBrasil   = parseCSV(b);
+    allStockH   = parseCSV(sh);
+    allInvent   = parseCSV(inv);
+    allPedidos  = parseCSV(ped);
+    document.getElementById('last-update').textContent = 'actualizado ' + new Date().toLocaleTimeString('es-CL');
+    buildYearTabs();
+    render();
+  } catch(e) {
+    document.getElementById('content').innerHTML = `<div class="error">
+      <b>Error cargando datos.</b><br><br>
+      Asegurate que el Sheet esté compartido como <b>"Cualquier persona con el enlace puede ver"</b>:<br>
+      Archivo → Compartir → Compartir con otros → "Cualquier persona con el enlace"
+    </div>`;
+  }
+}
+
+// Build ID→name map from Inventario
+function buildInventMap() {
+  const map = {};
+  allInvent.forEach(r => {
+    const id = (r['ID']||'').trim();
+    if (id) map[id] = {
+      nombre: (r['Producto']||'').trim(),
+      marca:  (r['Marca']||'').trim(),
+      costo:  parsePrecio(r['Costo']||''),
+      precio: parsePrecio(r['Precio Venta']||''),
+      margen: parsePrecio(r['Margen $']||''),
+      disponible: parseInt(r['Disponible']||'0')||0,
+      vendidos:   parseInt(r['Vendidos']||'0')||0,
+      categoria:  (r['Categoria']||'').trim(),
+    };
+  });
+  return map;
+}
+
+// Build stockName→ID map from Stock Histórico
+function buildStockMap() {
+  const map = {};
+  allStockH.forEach(r => {
+    const nombre = (r['Nombre en Stock (Histórico CBU)'] || Object.values(r)[0] || '').trim().toLowerCase();
+    const id = (r['ID_catalogo']||r['id_catalogo']||r['ID catalogo']||'').trim();
+    if (nombre && id) map[nombre] = id;
+  });
+  return map;
+}
+
+// Unify all sales into common format: {id, nombre, precio, margen, fecha, mes, anio, cliente, fuente}
+function buildUnifiedSales(inventMap, stockMap) {
+  const sales = [];
+
+  // 1. Brasil histórico → resolve ID via stockMap
+  allBrasil.forEach(r => {
+    const pagado = (r['Pagado']||'').trim().toUpperCase();
+    if (pagado !== 'SI' && pagado !== 'SÍ') return;
+    const prodNombre = (r['Pedido']||'').trim();
+    const prodLower = prodNombre.toLowerCase();
+    const id = stockMap[prodLower] || null;
+    const inv = id ? inventMap[id] : null;
+    const precio = parsePrecio(r['Precio']);
+    const margen = inv ? Math.round(precio * (inv.margen / inv.precio || 0.35)) : Math.round(precio * 0.35);
+    sales.push({
+      id,
+      nombre: inv ? inv.nombre : prodNombre,
+      precio,
+      margen,
+      mes: (r['Fecha']||'').trim(),
+      anio: (r['Año']||r['Año']||'').trim(),
+      cliente: (r['Cliente']||'').trim(),
+      fuente: 'historico',
+    });
+  });
+
+  // 2. Pedidos nuevos → resolve by ID directly
+  allPedidos.forEach(r => {
+    const estado = (r['Estado']||'').trim().toLowerCase();
+    // include pendiente + entregado, exclude cancelado
+    if (estado === 'cancelado') return;
+    const id = (r['ID']||'').trim();
+    const inv = id ? inventMap[id] : null;
+    const precio = parsePrecio(r['Precio Unitario']||r['Total Pedido']||'');
+    const cant = parseInt(r['Cantidad']||'1')||1;
+    const precioTotal = parsePrecio(r['Total Pedido']||r['Precio Unitario']||'') || precio * cant;
+    const margen = inv ? Math.round(inv.margen * cant) : 0;
+    const fechaRaw = (r['Fecha']||'').trim();
+    // parse "25-04-2026" or "25-04-2026, 12:21:44"
+    const parts = fechaRaw.split(/[,\s]/)[0].split('-');
+    const anio = parts[2] || '2026';
+    const mesNum = parseInt(parts[1]||'1') - 1;
+    const mes = MONTHS[mesNum] || '';
+    sales.push({
+      id,
+      nombre: inv ? inv.nombre : (r['Producto']||'').trim(),
+      precio: precioTotal,
+      margen,
+      mes,
+      anio,
+      cliente: (r['Nombre']||'').trim(),
+      instagram: (r['Instagram']||'').trim(),
+      estado: (r['Estado']||'').trim(),
+      fuente: 'nuevo',
+      fechaRaw,
+      codigo: (r['Código']||r['Codigo']||'').trim(),
+    });
+  });
+
+  return sales;
+}
+
+function buildYearTabs() {
+  const ys = new Set();
+  allBrasil.forEach(r => { const y=(r['Año']||r['Año']||'').trim(); if(y&&y!=='undefined')ys.add(y); });
+  allPedidos.forEach(r => {
+    const f=(r['Fecha']||'').split(/[,\s]/)[0].split('-');
+    if(f[2]) ys.add(f[2]);
+  });
+  const years = [...ys].sort();
+  document.getElementById('year-tabs').innerHTML =
+    ['todos',...years].map(y=>`<button class="ytab ${activeYear===y?'active':''}" onclick="setYear('${y}')">${y}</button>`).join('');
+}
+
+function render() {
+  const inventMap = buildInventMap();
+  const stockMap  = buildStockMap();
+  const allSales  = buildUnifiedSales(inventMap, stockMap);
+
+  // Filter by year & source
+  const sales = allSales.filter(s => {
+    if (activeYear !== 'todos' && s.anio !== activeYear) return false;
+    if (activeSource !== 'todos' && s.fuente !== activeSource) return false;
+    return true;
+  });
+
+  const totalVentas  = sales.reduce((s,r) => s + r.precio, 0);
+  const totalMargen  = sales.reduce((s,r) => s + r.margen, 0);
+  const totalPedidos = sales.length;
+  const ticketProm   = totalPedidos ? Math.round(totalVentas/totalPedidos) : 0;
+  const margenPct    = totalVentas ? Math.round(totalMargen/totalVentas*100) : 0;
+
+  // By month
+  const byMonth = {};
+  sales.forEach(s => {
+    const key = activeYear==='todos' ? s.mes+' '+s.anio : s.mes;
+    if (!s.mes) return;
+    if (!byMonth[key]) byMonth[key] = {ventas:0,margen:0,pedidos:0,mes:s.mes,anio:s.anio};
+    byMonth[key].ventas  += s.precio;
+    byMonth[key].margen  += s.margen;
+    byMonth[key].pedidos++;
+  });
+  const sortedMonths = Object.keys(byMonth).sort((a,b) => {
+    const ma=byMonth[a], mb=byMonth[b];
+    const ya=parseInt(ma.anio)||2025, yb=parseInt(mb.anio)||2025;
+    if (ya!==yb) return ya-yb;
+    return MONTHS.indexOf(ma.mes)-MONTHS.indexOf(mb.mes);
+  });
+  const bestMonth = sortedMonths.length ? sortedMonths.reduce((a,b)=>byMonth[a].ventas>byMonth[b].ventas?a:b) : '';
+
+  // By product (unified)
+  const prodMap = {};
+  sales.forEach(s => {
+    const key = s.nombre || 'Sin nombre';
+    if (!prodMap[key]) prodMap[key] = {ventas:0,margen:0,count:0};
+    prodMap[key].ventas  += s.precio;
+    prodMap[key].margen  += s.margen;
+    prodMap[key].count++;
+  });
+  const topProds = Object.entries(prodMap).sort((a,b)=>b[1].ventas-a[1].ventas).slice(0,10);
+
+  // By client
+  const clientMap = {};
+  sales.forEach(s => {
+    const c = s.cliente || 'Desconocido';
+    if (!clientMap[c]) clientMap[c] = 0;
+    clientMap[c] += s.precio;
+  });
+  const topClientes = Object.entries(clientMap).sort((a,b)=>b[1]-a[1]).slice(0,8);
+
+  // Recent pedidos nuevos
+  const recentPedidos = allPedidos
+    .filter(r=>(r['Estado']||'').toLowerCase()!=='cancelado')
+    .slice(0,10);
+
+  // Stock from inventario
+  const topMargen = Object.values(inventMap)
+    .filter(r=>r.margen>0&&r.precio>0)
+    .map(r=>({...r, pct:Math.round(r.margen/r.precio*100)}))
+    .sort((a,b)=>b.pct-a.pct).slice(0,12);
+
+  const stockDisp = Object.values(inventMap)
+    .filter(r=>r.disponible>0||r.vendidos>0)
+    .sort((a,b)=>(b.disponible+b.vendidos)-(a.disponible+a.vendidos)).slice(0,10);
+
+  const monthLabels = sortedMonths.map(k=>{
+    const m=byMonth[k];
+    return activeYear==='todos'?(m.mes||'').slice(0,3)+' '+(m.anio||'').slice(2):(m.mes||'').slice(0,3);
+  });
+
+  document.getElementById('content').innerHTML = `
+  <div style="display:flex;gap:5px;margin-bottom:8px;">
+    <button class="fuente-tab ${activeSource==='todos'?'active':''}" onclick="setSource('todos')">Todo</button>
+    <button class="fuente-tab ${activeSource==='historico'?'active':''}" onclick="setSource('historico')">Histórico</button>
+    <button class="fuente-tab ${activeSource==='nuevo'?'active':''}" onclick="setSource('nuevo')">Nuevo</button>
+  </div>
+
+  <div class="section-label">resumen</div>
+  <div class="metrics">
+    <div class="metric" style="background:#fff3ee;">
+      <div class="metric-label" style="color:#7a3a1f;">Ingresos</div>
+      <div class="metric-value" style="color:#7a3a1f;">${fmtM(totalVentas)}</div>
+      <div class="metric-sub" style="color:#7a3a1f;">CLP · ${totalPedidos} ítems</div>
+    </div>
+    <div class="metric" style="background:#fef6e4;">
+      <div class="metric-label" style="color:#633806;">Margen total</div>
+      <div class="metric-value" style="color:#633806;">${fmtM(totalMargen)}</div>
+      <div class="metric-sub" style="color:#633806;">${margenPct}% promedio</div>
+    </div>
+    <div class="metric" style="background:#fdf0f0;">
+      <div class="metric-label" style="color:#72243E;">Mejor mes</div>
+      <div class="metric-value" style="font-size:14px;color:#72243E;">${bestMonth||'-'}</div>
+      <div class="metric-sub" style="color:#72243E;">${bestMonth?fmtM(byMonth[bestMonth].ventas):''}</div>
+    </div>
+    <div class="metric" style="background:#fff8e8;">
+      <div class="metric-label" style="color:#633806;">Ticket prom.</div>
+      <div class="metric-value" style="font-size:16px;color:#633806;">${fmt(ticketProm)}</div>
+      <div class="metric-sub" style="color:#633806;">por ítem</div>
+    </div>
+  </div>
+
+  <div class="section-label">ventas e ingresos por mes</div>
+  <div class="card">
+    <div class="legend-row">
+      <span><span class="leg-dot" style="background:#ff9166;"></span>Ingresos</span>
+      <span><span class="leg-dot" style="background:#f1c96a;"></span>Margen</span>
+      <span><span class="leg-dot" style="background:#ffd592;border:1px solid #eee;"></span>Pedidos</span>
+    </div>
+    <div style="position:relative;width:100%;height:200px;">
+      <canvas id="monthChart" role="img" aria-label="Ingresos margen y pedidos por mes">.</canvas>
+    </div>
+  </div>
+
+  <div class="section-label">pedidos recientes</div>
+  <div class="card">
+    ${recentPedidos.length === 0 ? '<div style="font-size:12px;color:#aaa;text-align:center;padding:1rem;">Sin pedidos nuevos</div>' :
+      recentPedidos.map(r => {
+        const estado = (r['Estado']||'').trim();
+        const badgeColor = estado==='Entregado' ? '#eaf3de' : '#fff3ee';
+        const badgeText  = estado==='Entregado' ? '#3b6d11' : '#7a3a1f';
+        const productos = (r['Producto']||'').trim();
+        const total = r['Total Pedido'] || r['Subtotal'] || '';
+        const fecha = (r['Fecha']||'').split(',')[0];
+        return `<div class="pedido-row">
+          <div class="pedido-left">
+            <div class="pedido-nombre">${(r['Nombre']||'').trim()} <span style="font-size:10px;color:#aaa;">${(r['Instagram']||'').trim()}</span></div>
+            <div class="pedido-prod">${productos}</div>
+          </div>
+          <div class="pedido-right">
+            <div class="pedido-val">${parsePrecio(total)?fmt(parsePrecio(total)):''}</div>
+            <div class="pedido-fecha">${fecha}</div>
+            <span class="badge" style="background:${badgeColor};color:${badgeText};">${estado}</span>
+          </div>
+        </div>`;
+      }).join('')
+    }
+  </div>
+
+  <div class="section-label">top 10 productos (histórico + nuevo)</div>
+  <div class="card">
+    ${topProds.map((p,i) => `
+      <div class="bar-row">
+        <div class="bar-label">${p[0]}</div>
+        <div class="bar-track"><div class="bar-fill" style="width:${Math.round(p[1].ventas/topProds[0][1].ventas*100)}%;background:${COLORS[i%COLORS.length]};"></div></div>
+        <div class="bar-val">${fmtM(p[1].ventas)}</div>
+      </div>`).join('')}
+  </div>
+
+  <div class="section-label">margen % por producto (inventario actual)</div>
+  <div class="card">
+    <div style="position:relative;width:100%;height:${Math.max(200,topMargen.length*34+40)}px;">
+      <canvas id="margenChart" role="img" aria-label="Margen porcentual por producto">.</canvas>
+    </div>
+  </div>
+
+  <div class="section-label">stock disponible vs vendidos</div>
+  <div class="card">
+    <div class="legend-row">
+      <span><span class="leg-dot" style="background:#ffd592;border:1px solid #eee;"></span>Disponible</span>
+      <span><span class="leg-dot" style="background:#ff9166;"></span>Vendidos</span>
+    </div>
+    <div style="position:relative;width:100%;height:${Math.max(200,stockDisp.length*34+40)}px;">
+      <canvas id="stockChart" role="img" aria-label="Stock disponible vs vendidos">.</canvas>
+    </div>
+  </div>
+
+  <div class="section-label">top clientas</div>
+  <div class="card">
+    ${topClientes.map((c,i) => `
+      <div class="bar-row">
+        <div class="bar-label">${c[0]}</div>
+        <div class="bar-track"><div class="bar-fill" style="width:${Math.round(c[1]/topClientes[0][1]*100)}%;background:${COLORS[i%COLORS.length]};"></div></div>
+        <div class="bar-val">${fmtM(c[1])}</div>
+      </div>`).join('')}
+  </div>
+
+  <div class="section-label">campañas sugeridas</div>
+  ${[
+    {b:'Recompra',bg:'#fff3ee',tc:'#7a3a1f',t:'Pack Amino + Oil',d:'Bundle de tus 2 productos top con descuento. Sube ticket promedio y mueve stock.'},
+    {b:'Invierno',bg:'#fff8e8',tc:'#633806',t:'Rescate capilar de invierno',d:'Mayo fue tu 2do mejor mes históricamente. Night Spa + Net Mask + Amino — el frío vende solo.'},
+    {b:'Fidelización',bg:'#fdf0f0',tc:'#72243E',t:'Club VIP clientas frecuentes',d:'Tus top clientas generan la mayor parte de tus ingresos. Acceso anticipado + precio especial las retiene.'},
+    {b:'Make Up',bg:'#fef0f4',tc:'#72243E',t:'Semana make up',d:'Make up casi no aparece en ventas pero tenés 20+ productos. Una semana de contenido puede activar esa categoría.'},
+  ].map(c=>`
+    <div class="camp-card">
+      <span class="camp-badge" style="background:${c.bg};color:${c.tc};">${c.b}</span>
+      <div class="camp-title">${c.t}</div>
+      <div class="camp-desc">${c.d}</div>
+    </div>`).join('')}
+  `;
+
+  setTimeout(() => {
+    destroyChart('monthChart'); destroyChart('margenChart'); destroyChart('stockChart');
+
+    charts['monthChart'] = new Chart(document.getElementById('monthChart'), {
+      data: {
+        labels: monthLabels,
+        datasets: [
+          {type:'bar',label:'Ingresos',data:sortedMonths.map(k=>byMonth[k].ventas),backgroundColor:'#ff9166',borderRadius:3,yAxisID:'y'},
+          {type:'bar',label:'Margen',data:sortedMonths.map(k=>byMonth[k].margen),backgroundColor:'#f1c96a',borderRadius:3,yAxisID:'y'},
+          {type:'line',label:'Pedidos',data:sortedMonths.map(k=>byMonth[k].pedidos),borderColor:'#ffd592',backgroundColor:'transparent',borderWidth:2,pointBackgroundColor:'#ffd592',pointRadius:3,tension:0.3,yAxisID:'y2'}
+        ]
+      },
+      options:{responsive:true,maintainAspectRatio:false,
+        plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.datasetIndex<2?' '+fmtM(ctx.raw):' '+ctx.raw+' pedidos'}}},
+        scales:{
+          x:{ticks:{color:'#bbb',font:{size:10},autoSkip:false,maxRotation:40},grid:{display:false},border:{display:false}},
+          y:{ticks:{color:'#bbb',font:{size:10},callback:v=>fmtM(v)},grid:{color:'rgba(0,0,0,0.04)'},border:{display:false}},
+          y2:{position:'right',ticks:{color:'#bbb',font:{size:10}},grid:{display:false},border:{display:false}}
+        }
+      }
+    });
+
+    charts['margenChart'] = new Chart(document.getElementById('margenChart'), {
+      type:'bar',
+      data:{labels:topMargen.map(r=>r.nombre.slice(0,18)),datasets:[{label:'Margen %',data:topMargen.map(r=>r.pct),backgroundColor:topMargen.map((_,i)=>COLORS[i%COLORS.length]),borderRadius:3}]},
+      options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,
+        plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>' '+ctx.raw+'% — '+fmtM(topMargen[ctx.dataIndex].margen)}}},
+        scales:{
+          x:{ticks:{color:'#bbb',font:{size:10},callback:v=>v+'%'},grid:{color:'rgba(0,0,0,0.04)'},border:{display:false},max:100},
+          y:{ticks:{color:'#bbb',font:{size:10}},grid:{display:false},border:{display:false}}
+        }
+      }
+    });
+
+    charts['stockChart'] = new Chart(document.getElementById('stockChart'), {
+      type:'bar',
+      data:{
+        labels:stockDisp.map(r=>r.nombre.slice(0,16)),
+        datasets:[
+          {label:'Disponible',data:stockDisp.map(r=>r.disponible),backgroundColor:'#ffd592',borderRadius:2},
+          {label:'Vendidos',data:stockDisp.map(r=>r.vendidos),backgroundColor:'#ff9166',borderRadius:2}
+        ]
+      },
+      options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,
+        plugins:{legend:{display:false}},
+        scales:{
+          x:{ticks:{color:'#bbb',font:{size:10}},grid:{color:'rgba(0,0,0,0.04)'},border:{display:false}},
+          y:{ticks:{color:'#bbb',font:{size:10}},grid:{display:false},border:{display:false}}
+        }
+      }
+    });
+  }, 50);
+}
+
+function setYear(y)   { activeYear=y;   buildYearTabs(); render(); }
+function setSource(s) { activeSource=s; render(); }
+
+loadData();
+</script>
+</body>
+</html>
