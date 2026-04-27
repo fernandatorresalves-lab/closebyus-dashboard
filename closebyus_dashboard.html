@@ -59,10 +59,15 @@ h1{font-size:18px;font-weight:700;}
 <div id="content"><div class="loading">Cargando datos...</div></div>
 
 <script>
-const BRASIL_URL  = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRxOBPt1MsFbOU4mdeeETtqICoRQhyzRav2C7kchtzO4BAJenGUUwyRWUjlarhX_r4cXr-aHpxl06lB/pub?gid=1507520271&single=true&output=csv';
-const STOCKH_URL  = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRxOBPt1MsFbOU4mdeeETtqICoRQhyzRav2C7kchtzO4BAJenGUUwyRWUjlarhX_r4cXr-aHpxl06lB/pub?gid=1872410876&single=true&output=csv';
-const INVENT_URL  = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQm7e3j3Kd7VwaxIFeuATBNVltiYOtQnkGMBH1GPQlDCRXsfrQAq_BkeebakZZfp0pTNg2K10w6NaaU/pub?gid=446244464&single=true&output=csv';
-const PEDIDOS_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQm7e3j3Kd7VwaxIFeuATBNVltiYOtQnkGMBH1GPQlDCRXsfrQAq_BkeebakZZfp0pTNg2K10w6NaaU/pub?gid=0&single=true&output=csv';
+// Sheet IDs and GIDs
+const SHEET_HIST  = '1Iai0owhhk1DHu3r8nYMeHXn9g9j4hi_a9w3cmmXDHcM';
+const SHEET_NEW   = '1aZzmJd_PWZUER5x8RNxiEAPJT2d7e22Go_AYGYdNSzg';
+const SOURCES = [
+  { key: 'brasil',   sheetId: SHEET_HIST, gid: '1507520271' },
+  { key: 'stockh',   sheetId: SHEET_HIST, gid: '1872410876' },
+  { key: 'invent',   sheetId: SHEET_NEW,  gid: '446244464'  },
+  { key: 'pedidos',  sheetId: SHEET_NEW,  gid: '0'          },
+];
 
 const MONTHS = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 const COLORS = ['#ff9166','#ffa85a','#ffd592','#f1c96a','#e89d9f','#ffaec1','#ecdedb'];
@@ -88,29 +93,59 @@ function fmt(n) { return '$' + Math.round(n).toLocaleString('es-CL'); }
 function fmtM(n) { return n >= 1000000 ? '$'+(n/1000000).toFixed(1)+'M' : '$'+Math.round(n/1000)+'K'; }
 function destroyChart(id) { if (charts[id]) { charts[id].destroy(); delete charts[id]; } }
 
-async function loadData() {
-  document.getElementById('content').innerHTML = '<div class="loading">Cargando datos desde 4 fuentes...</div>';
+function parseGViz(json) {
   try {
-    const [b, sh, inv, ped] = await Promise.all([
-      fetch(BRASIL_URL).then(r => r.text()),
-      fetch(STOCKH_URL).then(r => r.text()),
-      fetch(INVENT_URL).then(r => r.text()),
-      fetch(PEDIDOS_URL).then(r => r.text()),
-    ]);
-    allBrasil   = parseCSV(b);
-    allStockH   = parseCSV(sh);
-    allInvent   = parseCSV(inv);
-    allPedidos  = parseCSV(ped);
+    const cols = json.table.cols.map(c => c.label);
+    return (json.table.rows || []).map(row => {
+      const obj = {};
+      cols.forEach((c, i) => {
+        const cell = row.c && row.c[i];
+        obj[c] = (cell && cell.v != null) ? String(cell.v) : '';
+      });
+      return obj;
+    });
+  } catch(e) { return []; }
+}
+
+function loadSheet(sheetId, gid, cbName) {
+  return new Promise((resolve, reject) => {
+    const fn = cbName;
+    window[fn] = function(json) {
+      resolve(parseGViz(json));
+      delete window[fn];
+      const s = document.getElementById('s_'+fn);
+      if (s) s.remove();
+    };
+    const script = document.createElement('script');
+    script.id = 's_' + fn;
+    script.onerror = () => reject(new Error('Error cargando ' + gid));
+    script.src = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:json&gid=${gid}&callback=${fn}`;
+    document.head.appendChild(script);
+  });
+}
+
+function loadData() {
+  document.getElementById('content').innerHTML = '<div class="loading">Cargando datos desde 4 fuentes...</div>';
+  Promise.all([
+    loadSheet(SHEET_HIST, '1507520271', 'cb_brasil'),
+    loadSheet(SHEET_HIST, '1872410876', 'cb_stockh'),
+    loadSheet(SHEET_NEW,  '446244464',  'cb_invent'),
+    loadSheet(SHEET_NEW,  '0',          'cb_pedidos'),
+  ]).then(([b, sh, inv, ped]) => {
+    allBrasil  = b;
+    allStockH  = sh;
+    allInvent  = inv;
+    allPedidos = ped;
     document.getElementById('last-update').textContent = 'actualizado ' + new Date().toLocaleTimeString('es-CL');
     buildYearTabs();
     render();
-  } catch(e) {
+  }).catch(e => {
     document.getElementById('content').innerHTML = `<div class="error">
       <b>Error cargando datos.</b><br><br>
-      Asegurate que el Sheet esté compartido como <b>"Cualquier persona con el enlace puede ver"</b>:<br>
+      Asegurate que ambos Sheets estén compartidos como <b>"Cualquier persona con el enlace puede ver"</b>:<br>
       Archivo → Compartir → Compartir con otros → "Cualquier persona con el enlace"
     </div>`;
-  }
+  });
 }
 
 // Build ID→name map from Inventario
